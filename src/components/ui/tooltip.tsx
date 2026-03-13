@@ -1,0 +1,61 @@
+"use client";
+
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import { type ComponentProps } from "react";
+import { cn } from "@/lib/utils";
+
+// --- Tooltip Provider ---
+export function TooltipProvider({
+  delayDuration = 200,
+  children,
+  ...props
+}: ComponentProps<typeof TooltipPrimitive.Provider>) {
+  return (
+    <TooltipPrimitive.Provider delayDuration={delayDuration} {...props}>
+      {children}
+    </TooltipPrimitive.Provider>
+  );
+}
+
+// --- Tooltip Root ---
+export function Tooltip({
+  children,
+  ...props
+}: ComponentProps<typeof TooltipPrimitive.Root>) {
+  return (
+    <TooltipPrimitive.Root {...props}>{children}</TooltipPrimitive.Root>
+  );
+}
+
+// --- Tooltip Trigger ---
+export function TooltipTrigger({
+  children,
+  ...props
+}: ComponentProps<typeof TooltipPrimitive.Trigger>) {
+  return (
+    <TooltipPrimitive.Trigger {...props}>{children}</TooltipPrimitive.Trigger>
+  );
+}
+
+// --- Tooltip Content ---
+export function TooltipContent({
+  sideOffset = 4,
+  className,
+  children,
+  ...props
+}: ComponentProps<typeof TooltipPrimitive.Content>) {
+  return (
+    <TooltipPrimitive.Portal>
+      <TooltipPrimitive.Content
+        sideOffset={sideOffset}
+        className={cn(
+          "z-50 overflow-hidden rounded-md bg-foreground px-3 py-1.5 text-xs text-background animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </TooltipPrimitive.Content>
+    </TooltipPrimitive.Portal>
+  );
+}
