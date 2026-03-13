@@ -13,6 +13,9 @@ export default defineConfig({
       client: "react-query",
       httpClient: "fetch",
       baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080",
+      mock: {
+        type: "msw",
+      },
     },
     hooks: {
       afterAllFilesWrite: "prettier --write",

@@ -62,7 +62,9 @@ export function SelectTrigger({
       {...props}
     >
       {children}
-      <SelectPrimitive.Icon render={<ChevronDown size={16} className="ml-2 shrink-0 opacity-50" />}></SelectPrimitive.Icon>
+      <SelectPrimitive.Icon>
+        <ChevronDown size={16} className="ml-2 shrink-0 opacity-50" />
+      </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
 }
