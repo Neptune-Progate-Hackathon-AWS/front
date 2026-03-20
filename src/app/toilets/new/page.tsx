@@ -1,266 +1,331 @@
+/**
+ * トイレ登録ページ
+ *
+ * 画像撮影/選択 → フォーム入力 → presigned URL 取得 → S3 アップロード → トイレ登録
+ */
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { useState, useRef } from "react";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Camera, ImageIcon, Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import React, { useState } from "react";
-import { useCreateToilet } from "@/gen/api/toilets/toilets";
-import { useCreatePresignedUrl } from "@/gen/api/images/images";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
+import { AuthGuard } from "@/components/auth/auth-guard";
+import { useGeolocation } from "@/hooks/useGeolocation";
+import { useToiletSubmit, type ToiletFormValues } from "@/hooks/useToiletSubmit";
 import { CreateToiletRequestBrand } from "@/gen/models/createToiletRequestBrand";
-import { PresignedUrlRequestContentType } from "@/gen/models/presignedUrlRequestContentType";
 
-type ToiletForm = {
-  name: string;
-  brand: CreateToiletRequestBrand;
-  address: string;
-  lat: string;
-  lng: string;
-  maleCount: string;
-  femaleCount: string;
-  multipurposeCount: string;
-  requiresPermission: boolean;
-  note: string;
-  image: File | null;
-};
+/** バリデーションスキーマ */
+const toiletSchema = z.object({
+  name: z.string().min(1, "店舗名を入力してください"),
+  brand: z.enum(
+    ["seven_eleven", "family_mart", "lawson", "mini_stop", "daily_yamazaki", "other"],
+    { required_error: "ブランドを選択してください" },
+  ),
+  address: z.string().optional(),
+  lat: z.number(),
+  lng: z.number(),
+  maleCount: z.number().min(0),
+  femaleCount: z.number().min(0),
+  multipurposeCount: z.number().min(0),
+  requiresPermission: z.boolean(),
+  note: z.string().max(500).optional(),
+  imageFile: z
+    .instanceof(File, { message: "写真を撮影または選択してください" })
+    .refine((f) => f.size > 0, "写真を撮影または選択してください"),
+});
 
-const BRAND_LABELS: Record<CreateToiletRequestBrand, string> = {
-  seven_eleven: "セブン-イレブン",
-  family_mart: "ファミリーマート",
-  lawson: "ローソン",
-  mini_stop: "ミニストップ",
-  daily_yamazaki: "デイリーヤマザキ",
-  other: "その他",
-};
+type FormValues = z.infer<typeof toiletSchema>;
+
+/** ブランド選択肢 */
+const BRAND_OPTIONS: { value: string; label: string }[] = [
+  { value: CreateToiletRequestBrand.seven_eleven, label: "セブンイレブン" },
+  { value: CreateToiletRequestBrand.family_mart, label: "ファミリーマート" },
+  { value: CreateToiletRequestBrand.lawson, label: "ローソン" },
+  { value: CreateToiletRequestBrand.mini_stop, label: "ミニストップ" },
+  { value: CreateToiletRequestBrand.daily_yamazaki, label: "デイリーヤマザキ" },
+  { value: CreateToiletRequestBrand.other, label: "その他" },
+];
+
+// react-hook-form v7 + zod v3 の型互換性問題を回避
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const toiletResolver = zodResolver(toiletSchema as any) as any;
 
 export default function NewToiletPage() {
-  const { mutateAsync: getPresignedUrl } = useCreatePresignedUrl();
-  const { mutateAsync: createToilet } = useCreateToilet();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  return (
+    <AuthGuard>
+      <NewToiletForm />
+    </AuthGuard>
+  );
+}
 
-  const [form, setForm] = useState<ToiletForm>({
-    name: "",
-    brand: CreateToiletRequestBrand.seven_eleven,
-    address: "",
-    lat: "",
-    lng: "",
-    maleCount: "0",
-    femaleCount: "0",
-    multipurposeCount: "0",
-    requiresPermission: false,
-    note: "",
-    image: null,
+function NewToiletForm() {
+  const router = useRouter();
+  const geo = useGeolocation();
+  const { onSubmit: submitToilet, serverError, isSubmitting } = useToiletSubmit();
+
+  // 画像プレビュー用
+  const [preview, setPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<FormValues>({
+    resolver: toiletResolver,
+    defaultValues: {
+      name: "",
+      brand: undefined,
+      address: "",
+      lat: geo.latitude ?? 0,
+      lng: geo.longitude ?? 0,
+      maleCount: 1,
+      femaleCount: 1,
+      multipurposeCount: 0,
+      requiresPermission: false,
+      note: "",
+    },
   });
 
-  const handleChange = (
-    key: Exclude<keyof ToiletForm, "image" | "brand" | "requiresPermission">,
-    value: string
-  ) => {
-    setForm(prev => ({ ...prev, [key]: value }));
-  };
+  // 現在地が取得できたらフォームにセット
+  const lat = watch("lat");
+  const lng = watch("lng");
+  if (geo.latitude && geo.longitude && lat === 0 && lng === 0) {
+    setValue("lat", geo.latitude);
+    setValue("lng", geo.longitude);
+  }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    setForm(prev => ({ ...prev, image: file }));
-  };
+  /** 画像選択ハンドラー */
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setValue("imageFile", file, { shouldValidate: true });
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+  }
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!form.image) return;
-
-    setIsSubmitting(true);
-    try {
-      // 1. Presigned URL を取得
-      const contentType = form.image.type as PresignedUrlRequestContentType;
-      const presignedResult = await getPresignedUrl({ data: { contentType } });
-      if (presignedResult.status !== 200) throw new Error("Presigned URL の取得に失敗しました");
-      const { uploadUrl, imageKey } = presignedResult.data;
-
-      // 2. S3 に画像を直接アップロード
-      // const uploadRes = await fetch(uploadUrl, {
-      //   method: "PUT",
-      //   headers: { "Content-Type": form.image.type },
-      //   body: form.image,
-      // });
-      // if (!uploadRes.ok) throw new Error("画像のアップロードに失敗しました");
-
-      // 3. トイレデータを POST
-      await createToilet({
-        data: {
-          name: form.name,
-          brand: form.brand,
-          address: form.address || undefined,
-          lat: parseFloat(form.lat),
-          lng: parseFloat(form.lng),
-          imageKey,
-          maleCount: parseInt(form.maleCount, 10),
-          femaleCount: parseInt(form.femaleCount, 10),
-          multipurposeCount: parseInt(form.multipurposeCount, 10),
-          requiresPermission: form.requiresPermission,
-          note: form.note || undefined,
-        },
-      });
-
-      alert("登録が完了しました");
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "登録に失敗しました");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  /** フォーム送信 */
+  async function handleFormSubmit(values: FormValues) {
+    await submitToilet(values as ToiletFormValues);
+  }
 
   return (
-    <Card className="w-full max-w-md mx-auto mt-10">
-      <CardHeader>
-        <CardTitle>新しいトイレ登録</CardTitle>
-        <CardDescription>新しいトイレの情報を入力してください。</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-4">
+    <div className="min-h-screen bg-background">
+      {/* ヘッダー */}
+      <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-background/95 backdrop-blur-sm px-4 py-3">
+        <button type="button" onClick={() => router.back()} className="p-1">
+          <ArrowLeft size={20} />
+        </button>
+        <h1 className="font-bold text-lg">トイレ情報を登録</h1>
+      </header>
 
-            <div className="grid gap-2">
-              <Label htmlFor="name">コンビニ店舗名 *</Label>
-              <Input
-                id="name"
-                placeholder="セブンイレブン〇〇店"
-                value={form.name}
-                onChange={(e) => handleChange("name", e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label>ブランド *</Label>
-              <Select
-                value={form.brand}
-                onValueChange={(value) =>
-                  setForm(prev => ({ ...prev, brand: value as CreateToiletRequestBrand }))
-                }
+      <form onSubmit={handleSubmit(handleFormSubmit)} className="p-4 pb-24">
+        <FieldGroup className="space-y-5">
+          {/* 画像撮影/選択 */}
+          <Field>
+            <FieldLabel>写真</FieldLabel>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              capture="environment"
+              onChange={handleImageChange}
+              className="hidden"
+            />
+            {preview ? (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full aspect-video rounded-lg overflow-hidden bg-muted"
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="ブランドを選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(BRAND_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={preview} alt="プレビュー" className="w-full h-full object-cover" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex flex-col items-center justify-center gap-2 w-full aspect-video rounded-lg border-2 border-dashed border-muted-foreground/30 text-muted-foreground hover:border-foreground/50 transition-colors"
+              >
+                <div className="flex gap-3">
+                  <Camera size={24} />
+                  <ImageIcon size={24} />
+                </div>
+                <span className="text-sm">タップして撮影 / 選択</span>
+              </button>
+            )}
+            {errors.imageFile && (
+              <p className="text-sm text-destructive">{errors.imageFile.message}</p>
+            )}
+          </Field>
 
-            <div className="grid gap-2">
-              <Label htmlFor="address">住所</Label>
-              <Input
-                id="address"
-                placeholder="東京都渋谷区..."
-                value={form.address}
-                onChange={(e) => handleChange("address", e.target.value)}
+          {/* 店舗名 */}
+          <Field>
+            <FieldLabel htmlFor="name">店舗名</FieldLabel>
+            <Input
+              id="name"
+              placeholder="例：セブンイレブン 渋谷駅前店"
+              variant="outline"
+              {...register("name")}
+              error={!!errors.name}
+            />
+            {errors.name && (
+              <p className="text-sm text-destructive">{errors.name.message}</p>
+            )}
+          </Field>
+
+          {/* ブランド */}
+          <Field>
+            <FieldLabel>ブランド</FieldLabel>
+            <Controller
+              name="brand"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger error={!!errors.brand}>
+                    <SelectValue placeholder="選択してください" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BRAND_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.brand && (
+              <p className="text-sm text-destructive">{errors.brand.message}</p>
+            )}
+          </Field>
+
+          {/* 住所（任意） */}
+          <Field>
+            <FieldLabel htmlFor="address">住所（任意）</FieldLabel>
+            <Input
+              id="address"
+              placeholder="例：東京都渋谷区道玄坂1-2-3"
+              variant="outline"
+              {...register("address")}
+            />
+          </Field>
+
+          {/* トイレ個数 */}
+          <Field>
+            <FieldLabel>トイレ個数</FieldLabel>
+            <div className="grid grid-cols-3 gap-3">
+              <CounterField
+                label="男性用"
+                value={watch("maleCount")}
+                onChange={(v) => setValue("maleCount", v)}
+              />
+              <CounterField
+                label="女性用"
+                value={watch("femaleCount")}
+                onChange={(v) => setValue("femaleCount", v)}
+              />
+              <CounterField
+                label="多目的"
+                value={watch("multipurposeCount")}
+                onChange={(v) => setValue("multipurposeCount", v)}
               />
             </div>
+          </Field>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="grid gap-2">
-                <Label htmlFor="lat">緯度 *</Label>
-                <Input
-                  id="lat"
-                  type="number"
-                  step="any"
-                  placeholder="35.6812"
-                  value={form.lat}
-                  onChange={(e) => handleChange("lat", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="lng">経度 *</Label>
-                <Input
-                  id="lng"
-                  type="number"
-                  step="any"
-                  placeholder="139.7671"
-                  value={form.lng}
-                  onChange={(e) => handleChange("lng", e.target.value)}
-                  required
-                />
-              </div>
+          {/* 店員への使用許可 */}
+          <Field>
+            <div className="flex items-center justify-between">
+              <FieldLabel htmlFor="requiresPermission" className="cursor-pointer">
+                店員に声掛けが必要
+              </FieldLabel>
+              <Switch id="requiresPermission" {...register("requiresPermission")} />
             </div>
+          </Field>
 
-            <div className="grid grid-cols-3 gap-2">
-              <div className="grid gap-2">
-                <Label htmlFor="maleCount">男性用</Label>
-                <Input
-                  id="maleCount"
-                  type="number"
-                  min="0"
-                  value={form.maleCount}
-                  onChange={(e) => handleChange("maleCount", e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="femaleCount">女性用</Label>
-                <Input
-                  id="femaleCount"
-                  type="number"
-                  min="0"
-                  value={form.femaleCount}
-                  onChange={(e) => handleChange("femaleCount", e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="multipurposeCount">多目的</Label>
-                <Input
-                  id="multipurposeCount"
-                  type="number"
-                  min="0"
-                  value={form.multipurposeCount}
-                  onChange={(e) => handleChange("multipurposeCount", e.target.value)}
-                />
-              </div>
-            </div>
+          {/* 備考 */}
+          <Field>
+            <FieldLabel htmlFor="note">備考（任意）</FieldLabel>
+            <Textarea
+              id="note"
+              placeholder="例：2階の奥にあります"
+              {...register("note")}
+            />
+          </Field>
 
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="requiresPermission"
-                checked={form.requiresPermission}
-                onChange={(e) =>
-                  setForm(prev => ({ ...prev, requiresPermission: e.target.checked }))
-                }
-              />
-              <Label htmlFor="requiresPermission">店員への使用許可が必要</Label>
-            </div>
+          {/* 位置情報（hidden） */}
+          <input type="hidden" {...register("lat", { valueAsNumber: true })} />
+          <input type="hidden" {...register("lng", { valueAsNumber: true })} />
 
-            <div className="grid gap-2">
-              <Label htmlFor="note">備考</Label>
-              <Textarea
-                id="note"
-                placeholder="備考(500文字以内)"
-                value={form.note}
-                onChange={(e) => handleChange("note", e.target.value)}
-              />
-            </div>
+          {/* エラー表示 */}
+          {serverError && (
+            <p className="text-sm text-destructive">{serverError}</p>
+          )}
+        </FieldGroup>
 
-            {/* <div className="grid gap-2">
-              <Label htmlFor="image">画像 *</Label>
-              <Input
-                id="image"
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={handleFileChange}
-                required
-              />
-            </div> */}
+        {/* 送信ボタン（固定フッター） */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t">
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting ? "登録中..." : "登録する"}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
 
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "登録中..." : "登録"}
-            </Button>
-
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+/** +/- ボタン付きカウンター */
+function CounterField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1.5 rounded-lg border p-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(0, value - 1))}
+          className="rounded-full border p-1 text-muted-foreground hover:bg-muted disabled:opacity-30"
+          disabled={value <= 0}
+        >
+          <Minus size={14} />
+        </button>
+        <span className="w-6 text-center font-bold">{value}</span>
+        <button
+          type="button"
+          onClick={() => onChange(value + 1)}
+          className="rounded-full border p-1 text-muted-foreground hover:bg-muted"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+    </div>
   );
 }

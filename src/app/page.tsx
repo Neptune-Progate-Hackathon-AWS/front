@@ -8,7 +8,7 @@ import { useGeolocation } from "@/hooks/useGeolocation";
 import { useListToilets } from "@/gen/api/toilets/toilets";
 import { Button } from "@/components/ui/button";
 import { BottomPanel, type SnapPoint } from "@/components/bottom-panel";
-import { LogOut, X } from "lucide-react";
+import { LogOut, Plus, X } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import type { Toilet } from "@/gen/models";
 import type { ToiletBrand } from "@/gen/models/toiletBrand";
@@ -104,6 +104,18 @@ export default function Home() {
           aria-label="ログアウト"
         >
           <LogOut size={18} />
+        </Button>
+      )}
+
+      {/* トイレ登録 FAB */}
+      {isAuthenticated && (
+        <Button
+          asChild
+          className="fixed bottom-6 right-4 z-10 size-14 rounded-full p-0 shadow-lg"
+        >
+          <Link href="/toilets/new">
+            <Plus size={24} />
+          </Link>
         </Button>
       )}
 
