@@ -22,6 +22,17 @@ export default function Home() {
       ? { latitude: geo.latitude, longitude: geo.longitude }
       : null;
 
+  // Geolocation の結果が出るまで Map のマウントを遅延させる。
+  // initialViewState は初回マウント時しか効かないため、
+  // 先に東京駅で描画すると現在地に切り替わらない。
+  if (geo.loading) {
+    return (
+      <div className="flex items-center justify-center h-screen text-muted-foreground">
+        現在地を取得中...
+      </div>
+    );
+  }
+
   return (
     <>
       <Map userLocation={userLocation} />
