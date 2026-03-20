@@ -1,20 +1,30 @@
 /**
- * 認証付き fetch のヘルパー
+ * 認証付き fetch のヘルパー (Amplify Auth 版)
  *
- * Orval が生成する API フックは fetch オプションを受け取れるので、
- * この関数の戻り値を渡すと Authorization ヘッダーが自動付与される。
+ * Amplify の fetchAuthSession() から accessToken を取得し、
+ * Authorization ヘッダーに付与する RequestInit を返す。
+ *
+ * Amplify SDK がトークンリフレッシュを自動で行うため、
+ * 常に有効なトークンが返る。
  *
  * 使い方:
- *   useListToilets({ fetch: authFetchOptions() })
+ *   useListToilets({ fetch: await authFetchOptions() })
+ *
+ * ※ 非同期関数に変更されたことに注意（Amplify のセッション取得が async のため）
  */
-import { getStoredAuth } from "./auth-tokens";
+import { fetchAuthSession } from "aws-amplify/auth";
 
-export function authFetchOptions(): RequestInit {
-  const stored = getStoredAuth();
-  if (!stored) return {};
-  return {
-    headers: {
-      Authorization: `Bearer ${stored.tokens.accessToken}`,
-    },
-  };
+export async function authFetchOptions(): Promise<RequestInit> {
+  try {
+    const session = await fetchAuthSession();
+    const token = session.tokens?.accessToken?.toString();
+    if (!token) return {};
+    return {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    };
+  } catch {
+    return {};
+  }
 }

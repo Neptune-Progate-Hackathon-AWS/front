@@ -1,17 +1,17 @@
 /**
- * 認証状態を管理する React Context
+ * 認証状態を管理する React Context (Amplify Auth 版)
  *
  * 提供するもの:
- * - tokens: 現在の JWT トークン (null = 未ログイン)
  * - isAuthenticated: ログイン済みかどうか
- * - isLoading: 初回の localStorage 復元が完了するまで true
- * - login(tokens): トークンを保存してログイン状態にする
- * - logout(): サーバー側ログアウト → ローカルのトークンをクリア
+ * - isLoading: 初回のセッション確認が完了するまで true
+ * - user: 現在ログイン中のユーザー情報 (userId, email)
+ * - login(email, password): Cognito にログイン
+ * - logout(): サインアウトしてセッションをクリア
  *
- * トークンの自動リフレッシュ:
- *   有効期限の半分が経過したタイミングで自動的に refreshToken API を呼ぶ。
- *   タブを閉じて再度開いた場合も、保存済みの issuedAt から残り時間を正しく計算する。
- *   期限切れのトークンが見つかった場合は即座にクリアする。
+ * トークン管理:
+ *   Amplify SDK が自動で accessToken / idToken / refreshToken を管理する。
+ *   手動での localStorage 操作やリフレッシュスケジューリングは不要。
+ *   API 呼び出し時は fetchAuthSession() でトークンを取得する。
  */
 "use client";
 
@@ -21,137 +21,136 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
-import type { AuthTokens } from "@/gen/models";
-import { getStoredAuth, setStoredAuth, clearStoredAuth } from "./auth-tokens";
 import {
-  refreshToken as refreshTokenApi,
-  logout as logoutApi,
-} from "@/gen/api/auth/auth";
+  signIn,
+  signUp,
+  confirmSignUp,
+  signOut,
+  getCurrentUser,
+  fetchAuthSession,
+  type SignInOutput,
+  type SignUpOutput,
+} from "aws-amplify/auth";
+
+type User = {
+  userId: string;
+  email: string;
+};
 
 type AuthState = {
-  tokens: AuthTokens | null;
+  user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (tokens: AuthTokens) => void;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<SignInOutput>;
+  register: (
+    email: string,
+    password: string,
+    nickname: string,
+  ) => Promise<SignUpOutput>;
+  confirmRegistration: (email: string, code: string) => Promise<void>;
+  logout: () => Promise<void>;
+  /** API 呼び出し用に accessToken を取得する */
+  getAccessToken: () => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [tokens, setTokens] = useState<AuthTokens | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  /** リフレッシュ用タイマーの ID。コンポーネント破棄時にクリアする */
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** 二重リフレッシュ防止フラグ */
-  const isRefreshingRef = useRef(false);
 
   /**
-   * 指定時刻に基づいてトークンリフレッシュをスケジュールする。
-   *
-   * リフレッシュタイミング = issuedAt + (expiresIn / 2)
-   * → 有効期限の折り返し地点で新しいトークンを取得する。
-   *
-   * ※ useEffect の deps に tokens を入れると setTokens の度に
-   *   再トリガーされて無限ループになるため、ref + 明示呼び出しで管理している。
+   * 初回マウント: Amplify のセッションからログイン状態を復元する。
+   * Amplify SDK が内部で localStorage / cookie からトークンを読み、
+   * 有効なセッションがあれば getCurrentUser() がユーザー情報を返す。
    */
-  function scheduleRefresh(t: AuthTokens, issuedAt: number) {
-    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+  useEffect(() => {
+    checkCurrentUser();
+  }, []);
 
-    const expiresAtMs = issuedAt + t.expiresIn * 1000;
-    const refreshAtMs = issuedAt + (t.expiresIn * 1000) / 2;
-    const delayMs = Math.max(0, refreshAtMs - Date.now());
-
-    // トークンが既に期限切れの場合は即座にクリア
-    if (expiresAtMs <= Date.now()) {
-      clearStoredAuth();
-      setTokens(null);
-      return;
+  async function checkCurrentUser() {
+    try {
+      const currentUser = await getCurrentUser();
+      setUser({
+        userId: currentUser.userId,
+        email: currentUser.signInDetails?.loginId ?? "",
+      });
+    } catch {
+      // 未ログイン状態（エラーではなく正常系）
+      setUser(null);
+    } finally {
+      setIsLoading(false);
     }
-
-    refreshTimerRef.current = setTimeout(async () => {
-      if (isRefreshingRef.current) return;
-      isRefreshingRef.current = true;
-
-      try {
-        const res = await refreshTokenApi({ refreshToken: t.refreshToken });
-        if (res.status === 200) {
-          setStoredAuth(res.data);
-          setTokens(res.data);
-          // 新しいトークンで再スケジュール（issuedAt は現在時刻）
-          scheduleRefresh(res.data, Date.now());
-        } else {
-          // リフレッシュ失敗 → セッション切れとして扱う
-          clearStoredAuth();
-          setTokens(null);
-        }
-      } catch {
-        clearStoredAuth();
-        setTokens(null);
-      } finally {
-        isRefreshingRef.current = false;
-      }
-    }, delayMs);
   }
 
-  // 初回マウント: localStorage からトークンを復元し、リフレッシュをスケジュール
-  useEffect(() => {
-    const stored = getStoredAuth();
-    if (stored) {
-      setTokens(stored.tokens);
-      scheduleRefresh(stored.tokens, stored.issuedAt);
+  const login = useCallback(async (email: string, password: string) => {
+    const result = await signIn({ username: email, password });
+
+    // サインイン完了後にユーザー情報をセット
+    if (result.isSignedIn) {
+      await checkCurrentUser();
     }
-    setIsLoading(false);
 
-    return () => {
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return result;
+  }, []);
 
-  /** ログイン成功時にトークンを保存し、リフレッシュタイマーを開始する */
-  const login = useCallback((newTokens: AuthTokens) => {
-    setStoredAuth(newTokens);
-    setTokens(newTokens);
-    scheduleRefresh(newTokens, Date.now());
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const register = useCallback(
+    async (email: string, password: string, nickname: string) => {
+      const result = await signUp({
+        username: email,
+        password,
+        options: {
+          userAttributes: {
+            email,
+            nickname,
+          },
+        },
+      });
+      return result;
+    },
+    [],
+  );
+
+  /** メール確認コードの検証。成功したら自動でログインはしない（ログイン画面に誘導） */
+  const confirmRegistration = useCallback(
+    async (email: string, code: string) => {
+      await confirmSignUp({ username: email, confirmationCode: code });
+    },
+    [],
+  );
+
+  const logout = useCallback(async () => {
+    await signOut();
+    setUser(null);
+  }, []);
 
   /**
-   * ログアウト処理
-   * 1. サーバー側で refresh token を無効化（Cognito 上のセッション破棄）
-   * 2. ローカルのトークンとリフレッシュタイマーをクリア
-   * ※ サーバー側の失敗はローカルクリアをブロックしない
+   * API 呼び出し時に Authorization ヘッダーに付与する accessToken を取得する。
+   * Amplify が自動的にトークンリフレッシュを行うため、常に有効なトークンが返る。
    */
-  const logout = useCallback(async () => {
+  const getAccessToken = useCallback(async () => {
     try {
-      const stored = getStoredAuth();
-      if (stored) {
-        await logoutApi({
-          headers: {
-            Authorization: `Bearer ${stored.tokens.accessToken}`,
-          },
-        });
-      }
+      const session = await fetchAuthSession();
+      return session.tokens?.accessToken?.toString() ?? null;
     } catch {
-      // サーバー側ログアウト失敗は無視（ローカルは必ずクリアする）
+      return null;
     }
-
-    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-    clearStoredAuth();
-    setTokens(null);
   }, []);
 
   const value = useMemo(
     () => ({
-      tokens,
-      isAuthenticated: tokens !== null,
+      user,
+      isAuthenticated: user !== null,
       isLoading,
       login,
+      register,
+      confirmRegistration,
       logout,
+      getAccessToken,
     }),
-    [tokens, isLoading, login, logout],
+    [user, isLoading, login, register, confirmRegistration, logout, getAccessToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
