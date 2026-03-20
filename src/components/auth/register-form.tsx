@@ -5,7 +5,7 @@
  */
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
@@ -33,12 +33,18 @@ const registerSchema = z.object({
     .regex(/[0-9]/, "数字を含めてください"),
 });
 
+type RegisterValues = z.infer<typeof registerSchema>;
+
+// react-hook-form v7 + zod v3 の型互換性問題を回避
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const registerResolver = zodResolver(registerSchema as any) as any;
+
 export function RegisterForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
-    resolver: zodResolver(registerSchema),
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<RegisterValues>({
+    resolver: registerResolver,
     defaultValues: { nickname: "", email: "", password: "" },
   });
   const { onSubmit, serverError } = useRegisterSubmit();
