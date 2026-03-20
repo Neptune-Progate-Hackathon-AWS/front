@@ -2,6 +2,7 @@
 
 import { Map } from "@/components/map";
 import { useAuth } from "@/lib/auth-context";
+import { useGeolocation } from "@/hooks/useGeolocation";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
@@ -9,15 +10,21 @@ import { useToast } from "@/components/ui/toast";
 export default function Home() {
   const { isAuthenticated, logout } = useAuth();
   const { toast } = useToast();
+  const geo = useGeolocation();
 
   async function handleLogout() {
     await logout();
     toast({ title: "ログアウトしました", variant: "info" });
   }
 
+  const userLocation =
+    geo.latitude != null && geo.longitude != null
+      ? { latitude: geo.latitude, longitude: geo.longitude }
+      : null;
+
   return (
     <>
-      <Map />
+      <Map userLocation={userLocation} />
       {/* TODO: navbar に移動する */}
       {isAuthenticated && (
         <Button
