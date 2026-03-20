@@ -29,6 +29,8 @@ interface MapProps {
   toilets?: Toilet[];
   /** マーカータップ時のコールバック */
   onToiletSelect?: (toilet: Toilet) => void;
+  /** 地図操作開始時のコールバック */
+  onMapInteraction?: () => void;
 }
 
 /**
@@ -36,7 +38,7 @@ interface MapProps {
  * userLocation が渡された場合はそこを中心に表示し、現在地マーカーを描画する。
  * toilets が渡された場合はピンを表示する。
  */
-export function Map({ userLocation, toilets = [], onToiletSelect }: MapProps) {
+export function Map({ userLocation, toilets = [], onToiletSelect, onMapInteraction }: MapProps) {
   const center = userLocation ?? DEFAULT_CENTER;
 
   return (
@@ -44,6 +46,7 @@ export function Map({ userLocation, toilets = [], onToiletSelect }: MapProps) {
       initialViewState={{ ...center, zoom: 15 }}
       style={{ width: "100%", height: "100vh" }}
       mapStyle="https://tiles.openfreemap.org/styles/liberty"
+      onMoveStart={onMapInteraction}
     >
       {/* トイレマーカー */}
       {toilets.map((toilet) => (

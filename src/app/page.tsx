@@ -90,6 +90,9 @@ export default function Home() {
           setSelectedToilet(toilet);
           setSnap("medium");
         }}
+        onMapInteraction={() => {
+          if (selectedToilet && snap !== "small") setSnap("small");
+        }}
       />
       {/* TODO: navbar に移動する */}
       {isAuthenticated && (
