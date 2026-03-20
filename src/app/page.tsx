@@ -7,15 +7,8 @@ import { useAuth } from "@/lib/auth-context";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useListToilets } from "@/gen/api/toilets/toilets";
 import { Button } from "@/components/ui/button";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerDescription,
-  DrawerFooter,
-} from "@/components/ui/drawer";
-import { LogOut } from "lucide-react";
+import { BottomPanel, type SnapPoint } from "@/components/bottom-panel";
+import { LogOut, X } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import type { Toilet } from "@/gen/models";
 import type { ToiletBrand } from "@/gen/models/toiletBrand";
@@ -43,6 +36,8 @@ export default function Home() {
   const { toast } = useToast();
   const geo = useGeolocation();
   const [selectedToilet, setSelectedToilet] = useState<Toilet | null>(null);
+
+  const [snap, setSnap] = useState<SnapPoint>("medium");
 
   // 位置情報の取得に失敗した場合、toast で通知する
   useEffect(() => {
@@ -91,7 +86,10 @@ export default function Home() {
       <Map
         userLocation={userLocation}
         toilets={toiletData?.toilets}
-        onToiletSelect={setSelectedToilet}
+        onToiletSelect={(toilet) => {
+          setSelectedToilet(toilet);
+          setSnap("medium");
+        }}
       />
       {/* TODO: navbar に移動する */}
       {isAuthenticated && (
@@ -106,24 +104,35 @@ export default function Home() {
         </Button>
       )}
 
-      {/* トイレ詳細ドロワー */}
-      <Drawer
+      {/* トイレ詳細パネル（3段階スナップ） */}
+      <BottomPanel
         open={selectedToilet !== null}
-        onOpenChange={(open) => {
-          if (!open) setSelectedToilet(null);
-        }}
+        onClose={() => setSelectedToilet(null)}
+        snap={snap}
+        onSnapChange={setSnap}
       >
-        <DrawerContent>
-          {selectedToilet && (
-            <>
-              <DrawerHeader>
-                <DrawerTitle>{selectedToilet.name}</DrawerTitle>
-                <DrawerDescription>
-                  {BRAND_LABEL[selectedToilet.brand]}
-                  {selectedToilet.address && ` · ${selectedToilet.address}`}
-                </DrawerDescription>
-              </DrawerHeader>
+        {selectedToilet && (
+          <div className="relative">
+            {/* 閉じるボタン */}
+            <button
+              type="button"
+              onClick={() => setSelectedToilet(null)}
+              className="absolute right-3 top-0 rounded-full p-1 hover:bg-muted"
+            >
+              <X size={16} />
+            </button>
 
+            {/* 小：常に表示（名前 + ブランド） */}
+            <div className="px-4 pb-2">
+              <h2 className="font-bold text-base">{selectedToilet.name}</h2>
+              <p className="text-sm text-muted-foreground">
+                {BRAND_LABEL[selectedToilet.brand]}
+                {selectedToilet.address && ` · ${selectedToilet.address}`}
+              </p>
+            </div>
+
+            {/* 中〜大：スナップが小以外のとき表示 */}
+            {snap !== "small" && (
               <div className="px-4 space-y-3">
                 {/* トイレ個数 */}
                 <div className="grid grid-cols-3 gap-2">
@@ -145,19 +154,32 @@ export default function Home() {
                     📝 {selectedToilet.note}
                   </p>
                 )}
-              </div>
 
-              <DrawerFooter>
-                <Button asChild>
-                  <Link href={`/toilets/${selectedToilet.toiletId}`}>
-                    詳細を見る
-                  </Link>
-                </Button>
-              </DrawerFooter>
-            </>
-          )}
-        </DrawerContent>
-      </Drawer>
+                {/* 大：画像 */}
+                {snap === "large" && (
+                  <div className="aspect-video rounded-lg overflow-hidden bg-muted">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={selectedToilet.imageUrl}
+                      alt={`${selectedToilet.name}のトイレ`}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* アクションボタン */}
+            <div className="px-4 py-3">
+              <Button className="w-full" asChild>
+                <Link href={`/toilets/${selectedToilet.toiletId}`}>
+                  詳細を見る
+                </Link>
+              </Button>
+            </div>
+          </div>
+        )}
+      </BottomPanel>
     </>
   );
 }
