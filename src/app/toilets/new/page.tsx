@@ -101,7 +101,6 @@ function NewToiletFlow() {
   async function handleSubmit() {
     if (!selectedStore) return;
 
-    // imageFile が無い場合はダミーの空 File を送る（バックエンド側で optional になる前提）
     const values: ToiletFormValues = {
       name: selectedStore.name,
       brand: selectedStore.brand as CreateToiletRequestBrand,
@@ -113,7 +112,7 @@ function NewToiletFlow() {
       multipurposeCount: 0,
       requiresPermission,
       note: note || undefined,
-      imageFile: imageFile ?? new File([], "empty"),
+      imageFile,
     };
 
     await submitToilet(values);

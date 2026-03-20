@@ -157,8 +157,8 @@ export default function Home() {
       imageFile,
     };
 
-    await submitToilet(values);
-    exitRegistration();
+    const success = await submitToilet(values);
+    if (success) exitRegistration();
   }
 
   async function handleLogout() {

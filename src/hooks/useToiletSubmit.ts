@@ -26,7 +26,8 @@ export function useToiletSubmit() {
   const [serverError, setServerError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function onSubmit(values: ToiletFormValues) {
+  /** @returns 登録成功なら true */
+  async function onSubmit(values: ToiletFormValues): Promise<boolean> {
     setServerError("");
     setIsSubmitting(true);
 
@@ -73,11 +74,12 @@ export function useToiletSubmit() {
       }
 
       toast({ title: "トイレ情報を登録しました！", variant: "success" });
-      router.push("/");
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : "登録に失敗しました";
       setServerError(message);
       toast({ title: message, variant: "error" });
+      return false;
     } finally {
       setIsSubmitting(false);
     }

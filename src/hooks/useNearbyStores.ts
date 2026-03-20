@@ -1,16 +1,18 @@
 /**
  * 周辺コンビニ検索フック
  *
- * Amazon Location Service の SearchPlaceIndexForPosition を使って
+ * Amazon Location Service の SearchPlaceIndexForText を使って
  * 現在地周辺のコンビニエンスストアを検索する。
  * Cognito Identity Pool 経由で AWS クレデンシャルを取得。
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   LocationClient,
   SearchPlaceIndexForTextCommand,
 } from "@aws-sdk/client-location";
 import { fetchAuthSession } from "aws-amplify/auth";
+
+const PLACE_INDEX_NAME = process.env.NEXT_PUBLIC_PLACE_INDEX_NAME ?? "";
 
 /** 検索結果の店舗情報 */
 export interface NearbyStore {
@@ -49,38 +51,45 @@ export function useNearbyStores() {
   const [stores, setStores] = useState<NearbyStore[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // LocationClient を使い回す
+  const clientRef = useRef<LocationClient | null>(null);
 
   const search = useCallback(async (lat: number, lng: number) => {
     setIsSearching(true);
     setError(null);
 
     try {
-      // Amplify 経由で AWS クレデンシャルを取得
-      const session = await fetchAuthSession();
-      const credentials = session.credentials;
-      if (!credentials) {
-        throw new Error("AWS クレデンシャルを取得できませんでした");
+      if (!PLACE_INDEX_NAME) {
+        throw new Error("Place Index が設定されていません（NEXT_PUBLIC_PLACE_INDEX_NAME）");
       }
 
-      const client = new LocationClient({
-        region: "us-east-1",
-        credentials: {
-          accessKeyId: credentials.accessKeyId,
-          secretAccessKey: credentials.secretAccessKey,
-          sessionToken: credentials.sessionToken,
-        },
-      });
+      // クライアントがなければ初期化
+      if (!clientRef.current) {
+        const session = await fetchAuthSession();
+        const credentials = session.credentials;
+        if (!credentials) {
+          throw new Error("AWS クレデンシャルを取得できませんでした");
+        }
+        clientRef.current = new LocationClient({
+          region: "us-east-1",
+          credentials: {
+            accessKeyId: credentials.accessKeyId,
+            secretAccessKey: credentials.secretAccessKey,
+            sessionToken: credentials.sessionToken,
+          },
+        });
+      }
 
       // 「コンビニ」で周辺テキスト検索（店名が返る）
       const command = new SearchPlaceIndexForTextCommand({
-        IndexName: process.env.NEXT_PUBLIC_PLACE_INDEX_NAME,
+        IndexName: PLACE_INDEX_NAME,
         Text: "コンビニ",
         BiasPosition: [lng, lat], // [経度, 緯度] の順
         MaxResults: 10,
         Language: "ja",
       });
 
-      const result = await client.send(command);
+      const result = await clientRef.current.send(command);
 
       const convenienceStores: NearbyStore[] = (result.Results ?? [])
         .map((r) => {
@@ -108,6 +117,8 @@ export function useNearbyStores() {
         setError("周辺にコンビニが見つかりませんでした");
       }
     } catch (err) {
+      // クレデンシャル期限切れ時はクライアントをリセット
+      clientRef.current = null;
       const message =
         err instanceof Error ? err.message : "店舗の検索に失敗しました";
       setError(message);
