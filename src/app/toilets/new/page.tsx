@@ -7,21 +7,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { useGeolocation } from "@/hooks/useGeolocation";
 import { useCreateToilet } from "@/gen/api/toilets/toilets";
 import { useCreatePresignedUrl } from "@/gen/api/images/images";
 import { CreateToiletRequestBrand } from "@/gen/models/createToiletRequestBrand";
 import { PresignedUrlRequestContentType } from "@/gen/models/presignedUrlRequestContentType";
 
+
 type ToiletForm = {
-  name: string;
   brand: CreateToiletRequestBrand;
   address: string;
   lat: string;
   lng: string;
-  maleCount: string;
-  femaleCount: string;
-  multipurposeCount: string;
   requiresPermission: boolean;
   note: string;
   image: File | null;
@@ -37,23 +37,42 @@ const BRAND_LABELS: Record<CreateToiletRequestBrand, string> = {
 };
 
 export default function NewToiletPage() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const { mutateAsync: getPresignedUrl } = useCreatePresignedUrl();
   const { mutateAsync: createToilet } = useCreateToilet();
   const [isSubmitting, setIsSubmitting] = useState(false);
-
   const [form, setForm] = useState<ToiletForm>({
-    name: "",
     brand: CreateToiletRequestBrand.seven_eleven,
     address: "",
     lat: "",
     lng: "",
-    maleCount: "0",
-    femaleCount: "0",
-    multipurposeCount: "0",
     requiresPermission: false,
     note: "",
     image: null,
   });
+  const geo = useGeolocation();
+
+  // 現在地が取得できたら住所・緯度経度を自動入力
+  useEffect(() => {
+    if (geo.latitude == null || geo.longitude == null) return;
+
+    const lat = geo.latitude;
+    const lng = geo.longitude;
+
+    setForm(prev => ({ ...prev, lat: String(lat), lng: String(lng) }));
+
+    fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ja`
+    )
+      .then(res => res.json())
+      .then(data => {
+        if (data.display_name) {
+          setForm(prev => ({ ...prev, address: data.display_name }));
+        }
+      })
+      .catch(() => { });
+  }, [geo.latitude, geo.longitude]);
 
   const handleChange = (
     key: Exclude<keyof ToiletForm, "image" | "brand" | "requiresPermission">,
@@ -62,49 +81,56 @@ export default function NewToiletPage() {
     setForm(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    setForm(prev => ({ ...prev, image: file }));
+  /** 全角数字・全角マイナスを半角に変換 */
+  const normalize = (str: string) =>
+    str
+      .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+      .replace(/−/g, "-");
+
+  //入力された住所から緯度経度を取得する
+  const getLatLngFromAddress = async (address: string) => {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(normalize(address))}&format=json&limit=1`
+    );
+    const data = await response.json();
+    if (data.length > 0) {
+      setForm(prev => ({ ...prev, lat: data[0].lat, lng: data[0].lon }));
+    }
+    alert("緯度経度の取得に成功しました");
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!form.image) return;
-
     setIsSubmitting(true);
     try {
-      // 1. Presigned URL を取得
-      const contentType = form.image.type as PresignedUrlRequestContentType;
-      const presignedResult = await getPresignedUrl({ data: { contentType } });
-      if (presignedResult.status !== 200) throw new Error("Presigned URL の取得に失敗しました");
-      const { uploadUrl, imageKey } = presignedResult.data;
+      // 画像が選択されている場合のみ S3 アップロード（未実装のためスキップ）
+      let imageKey = "";
+      if (form.image) {
+        const contentType = form.image.type as PresignedUrlRequestContentType;
+        const presignedResult = await getPresignedUrl({ data: { contentType } });
+        if (presignedResult.status !== 200) throw new Error("Presigned URL の取得に失敗しました");
+        imageKey = presignedResult.data.imageKey;
+      }
 
-      // 2. S3 に画像を直接アップロード
-      // const uploadRes = await fetch(uploadUrl, {
-      //   method: "PUT",
-      //   headers: { "Content-Type": form.image.type },
-      //   body: form.image,
-      // });
-      // if (!uploadRes.ok) throw new Error("画像のアップロードに失敗しました");
-
-      // 3. トイレデータを POST
+      // トイレデータを POST
       await createToilet({
         data: {
-          name: form.name,
+          name: "",
           brand: form.brand,
           address: form.address || undefined,
           lat: parseFloat(form.lat),
           lng: parseFloat(form.lng),
           imageKey,
-          maleCount: parseInt(form.maleCount, 10),
-          femaleCount: parseInt(form.femaleCount, 10),
-          multipurposeCount: parseInt(form.multipurposeCount, 10),
+          maleCount: 0,
+          femaleCount: 0,
+          multipurposeCount: 0,
           requiresPermission: form.requiresPermission,
           note: form.note || undefined,
         },
       });
 
-      alert("登録が完了しました");
+      await queryClient.invalidateQueries({ queryKey: ["http://localhost:8080/toilets"] });
+      router.push("/");
     } catch (err) {
       alert(err instanceof Error ? err.message : "登録に失敗しました");
     } finally {
@@ -121,17 +147,6 @@ export default function NewToiletPage() {
       <CardContent>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4">
-
-            <div className="grid gap-2">
-              <Label htmlFor="name">コンビニ店舗名 *</Label>
-              <Input
-                id="name"
-                placeholder="セブンイレブン〇〇店"
-                value={form.name}
-                onChange={(e) => handleChange("name", e.target.value)}
-                required
-              />
-            </div>
 
             <div className="grid gap-2">
               <Label>ブランド *</Label>
@@ -188,38 +203,8 @@ export default function NewToiletPage() {
                 />
               </div>
             </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div className="grid gap-2">
-                <Label htmlFor="maleCount">男性用</Label>
-                <Input
-                  id="maleCount"
-                  type="number"
-                  min="0"
-                  value={form.maleCount}
-                  onChange={(e) => handleChange("maleCount", e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="femaleCount">女性用</Label>
-                <Input
-                  id="femaleCount"
-                  type="number"
-                  min="0"
-                  value={form.femaleCount}
-                  onChange={(e) => handleChange("femaleCount", e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="multipurposeCount">多目的</Label>
-                <Input
-                  id="multipurposeCount"
-                  type="number"
-                  min="0"
-                  value={form.multipurposeCount}
-                  onChange={(e) => handleChange("multipurposeCount", e.target.value)}
-                />
-              </div>
+            <div className="flex justify-left">
+              <Button type="button" onClick={() => getLatLngFromAddress(form.address)}>住所から緯度経度を取得</Button>
             </div>
 
             <div className="flex items-center gap-2">

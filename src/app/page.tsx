@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Map } from "@/components/map";
+import { Map, type DrawnCircle } from "@/components/map";
 import { useAuth } from "@/lib/auth-context";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useListToilets } from "@/gen/api/toilets/toilets";
@@ -17,6 +17,16 @@ import {
   ToiletFemaleIcon,
   ToiletIcon,
 } from "@/components/icons/toilet-icons";
+
+function getDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 /** デフォルト検索中心（東京駅） */
 const DEFAULT_CENTER = { lat: 35.6812, lng: 139.7671 };
@@ -36,8 +46,9 @@ export default function Home() {
   const { toast } = useToast();
   const geo = useGeolocation();
   const [selectedToilet, setSelectedToilet] = useState<Toilet | null>(null);
-
   const [snap, setSnap] = useState<SnapPoint>("medium");
+  const [mode, setMode] = useState<"default" | "external">("default");
+  const [externalCircle, setExternalCircle] = useState<DrawnCircle | null>(null);
 
   // 位置情報の取得に失敗した場合、toast で通知する
   useEffect(() => {
@@ -54,11 +65,44 @@ export default function Home() {
 
   const { data: toiletData } = useListToilets(searchCenter, {
     query: {
-      // 位置情報の取得が完了してからフェッチする
       enabled: !geo.loading,
       select: (res) => (res.status === 200 ? res.data : undefined),
     },
   });
+
+  // 外部検索モード用クエリ（描いた円の中心で検索）
+  const { data: externalData } = useListToilets(
+    externalCircle ? { lat: externalCircle.lat, lng: externalCircle.lng } : { lat: 0, lng: 0 },
+    {
+      query: {
+        enabled: mode === "external" && externalCircle !== null,
+        select: (res) => (res.status === 200 ? res.data : undefined),
+      },
+    }
+  );
+
+  // 表示するトイレを mode に応じて切り替え
+  const displayToilets =
+    mode === "external" && externalCircle
+      ? (externalData?.toilets ?? []).filter(
+          (t) => getDistanceMeters(externalCircle.lat, externalCircle.lng, t.lat, t.lng) <= externalCircle.radiusMeters
+        )
+      : (toiletData?.toilets ?? []);
+
+  const handleCircleDrawn = (circle: DrawnCircle) => {
+    setExternalCircle(circle);
+    setSelectedToilet(null);
+  };
+
+  const handleModeToggle = () => {
+    if (mode === "default") {
+      setMode("external");
+      setExternalCircle(null);
+    } else {
+      setMode("default");
+      setExternalCircle(null);
+    }
+  };
 
   async function handleLogout() {
     await logout();
@@ -85,7 +129,7 @@ export default function Home() {
     <>
       <Map
         userLocation={userLocation}
-        toilets={toiletData?.toilets}
+        toilets={displayToilets}
         onToiletSelect={(toilet) => {
           setSelectedToilet(toilet);
           setSnap("medium");
@@ -93,7 +137,25 @@ export default function Home() {
         onMapInteraction={() => {
           if (selectedToilet && snap !== "small") setSnap("small");
         }}
+        mode={mode}
+        externalCircle={externalCircle}
+        onCircleDrawn={handleCircleDrawn}
       />
+      {/* 上部ボタン群 */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-10 flex gap-2">
+        <Button asChild size="sm" className="shadow-md">
+          <Link href="/toilets/new">+ 新規登録</Link>
+        </Button>
+        <Button
+          size="sm"
+          variant={mode === "external" ? "primary" : "outline"}
+          className="shadow-md bg-background/80 backdrop-blur-sm"
+          onClick={handleModeToggle}
+        >
+          {mode === "external" ? "🔍 エリア検索中" : "エリア検索"}
+        </Button>
+      </div>
+
       {/* TODO: navbar に移動する */}
       {isAuthenticated && (
         <Button
