@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Map } from "@/components/map";
 import { useAuth } from "@/lib/auth-context";
 import { useGeolocation } from "@/hooks/useGeolocation";
@@ -11,6 +12,13 @@ export default function Home() {
   const { isAuthenticated, logout } = useAuth();
   const { toast } = useToast();
   const geo = useGeolocation();
+
+  // 位置情報の取得に失敗した場合、toast で通知する
+  useEffect(() => {
+    if (geo.error) {
+      toast({ title: geo.error, variant: "error" });
+    }
+  }, [geo.error, toast]);
 
   async function handleLogout() {
     await logout();
