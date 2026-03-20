@@ -5,7 +5,7 @@
  */
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
@@ -26,13 +26,19 @@ const confirmSchema = z.object({
     .regex(/^\d{6}$/, "6桁の数字を入力してください"),
 });
 
+type ConfirmValues = z.infer<typeof confirmSchema>;
+
+// react-hook-form v7 + zod v3 の型互換性問題を回避
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const confirmResolver = zodResolver(confirmSchema as any) as any;
+
 export function ConfirmForm({
   email,
   className,
   ...props
 }: { email: string } & React.ComponentProps<"div">) {
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
-    resolver: zodResolver(confirmSchema),
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<ConfirmValues>({
+    resolver: confirmResolver,
     defaultValues: { code: "" },
   });
   const { onSubmit, serverError } = useConfirmSubmit(email);

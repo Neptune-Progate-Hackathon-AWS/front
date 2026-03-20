@@ -5,7 +5,7 @@
  */
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
@@ -27,12 +27,18 @@ const loginSchema = z.object({
   password: z.string().min(1, "パスワードを入力してください"),
 });
 
+type LoginValues = z.infer<typeof loginSchema>;
+
+// react-hook-form v7 + zod v3 の型互換性問題を回避
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const loginResolver = zodResolver(loginSchema as any) as any;
+
 export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
-    resolver: zodResolver(loginSchema),
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginValues>({
+    resolver: loginResolver,
     defaultValues: { email: "", password: "" },
   });
   const { onSubmit, serverError } = useLoginSubmit();
