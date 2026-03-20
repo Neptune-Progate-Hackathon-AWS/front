@@ -14,7 +14,7 @@ export interface GeolocationState {
   error: string | null;
 }
 
-const GEOLOCATION_OPTIONS: PositionOptions = {
+const GEOLOCATION_OPTIONS = {
   enableHighAccuracy: true,
   timeout: 10_000,
   maximumAge: 60_000,

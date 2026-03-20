@@ -50,8 +50,6 @@ export function BottomPanel({
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     dragStartY.current = e.clientY;
-    // ポインターをキャプチャして、要素外に出てもイベントを受け取る
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }, []);
 
   const handlePointerUp = useCallback(
