@@ -5,7 +5,7 @@
  */
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -109,18 +109,26 @@ function NewToiletForm() {
   });
 
   // 現在地が取得できたらフォームにセット
-  const lat = watch("lat");
-  const lng = watch("lng");
-  if (geo.latitude && geo.longitude && lat === 0 && lng === 0) {
-    setValue("lat", geo.latitude);
-    setValue("lng", geo.longitude);
-  }
+  useEffect(() => {
+    if (geo.latitude != null && geo.longitude != null) {
+      setValue("lat", geo.latitude);
+      setValue("lng", geo.longitude);
+    }
+  }, [geo.latitude, geo.longitude, setValue]);
+
+  // コンポーネントアンマウント時に Object URL を解放
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
 
   /** 画像選択ハンドラー */
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setValue("imageFile", file, { shouldValidate: true });
+    if (preview) URL.revokeObjectURL(preview);
     const url = URL.createObjectURL(file);
     setPreview(url);
   }
@@ -260,7 +268,17 @@ function NewToiletForm() {
               <FieldLabel htmlFor="requiresPermission" className="cursor-pointer">
                 店員に声掛けが必要
               </FieldLabel>
-              <Switch id="requiresPermission" {...register("requiresPermission")} />
+              <Controller
+                name="requiresPermission"
+                control={control}
+                render={({ field }) => (
+                  <Switch
+                    id="requiresPermission"
+                    checked={field.value}
+                    onChange={(e) => field.onChange(e.target.checked)}
+                  />
+                )}
+              />
             </div>
           </Field>
 

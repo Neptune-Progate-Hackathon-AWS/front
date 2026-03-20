@@ -33,6 +33,10 @@ export function useToiletSubmit() {
       const fetchOpts = await authFetchOptions();
 
       // 1. presigned URL を取得
+      const allowedTypes = ["image/jpeg", "image/png", "image/webp"] as const;
+      if (!allowedTypes.includes(values.imageFile.type as (typeof allowedTypes)[number])) {
+        throw new Error("対応していない画像形式です（JPEG / PNG / WebP のみ）");
+      }
       const contentType = values.imageFile.type as PresignedUrlRequestContentType;
       const presignedRes = await createPresignedUrl(
         { contentType },

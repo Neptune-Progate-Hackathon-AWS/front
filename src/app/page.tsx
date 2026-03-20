@@ -111,10 +111,10 @@ export default function Home() {
       {isAuthenticated && (
         <Button
           asChild
-          className="fixed bottom-6 right-4 z-10 size-14 rounded-full p-0 shadow-lg"
+          className="fixed top-4 left-4 z-10 size-10 rounded-full p-0 shadow-lg"
         >
           <Link href="/toilets/new">
-            <Plus size={24} />
+            <Plus size={20} />
           </Link>
         </Button>
       )}
