@@ -4,9 +4,13 @@ import { useEffect } from "react";
 import { Map } from "@/components/map";
 import { useAuth } from "@/lib/auth-context";
 import { useGeolocation } from "@/hooks/useGeolocation";
+import { useListToilets } from "@/gen/api/toilets/toilets";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
+
+/** デフォルト検索中心（東京駅） */
+const DEFAULT_CENTER = { lat: 35.6812, lng: 139.7671 };
 
 export default function Home() {
   const { isAuthenticated, logout } = useAuth();
@@ -19,6 +23,20 @@ export default function Home() {
       toast({ title: geo.error, variant: "error" });
     }
   }, [geo.error, toast]);
+
+  // 現在地 or デフォルト中心で周辺トイレを取得
+  const searchCenter =
+    geo.latitude != null && geo.longitude != null
+      ? { lat: geo.latitude, lng: geo.longitude }
+      : DEFAULT_CENTER;
+
+  const { data: toiletData } = useListToilets(searchCenter, {
+    query: {
+      // 位置情報の取得が完了してからフェッチする
+      enabled: !geo.loading,
+      select: (res) => (res.status === 200 ? res.data : undefined),
+    },
+  });
 
   async function handleLogout() {
     await logout();
@@ -43,7 +61,7 @@ export default function Home() {
 
   return (
     <>
-      <Map userLocation={userLocation} />
+      <Map userLocation={userLocation} toilets={toiletData?.toilets} />
       {/* TODO: navbar に移動する */}
       {isAuthenticated && (
         <Button
