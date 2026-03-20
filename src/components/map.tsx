@@ -4,6 +4,7 @@ import { Map as MapGL, Marker } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Toilet } from "@/gen/models";
 import type { ToiletBrand } from "@/gen/models/toiletBrand";
+import { ToiletIcon } from "@/components/icons/toilet-icons";
 
 /** 東京駅をフォールバック中心に使用 */
 const DEFAULT_CENTER = {
@@ -59,10 +60,10 @@ export function Map({ userLocation, toilets = [], onToiletSelect }: MapProps) {
             onClick={() => onToiletSelect?.(toilet)}
           >
             <div
-              className="size-8 rounded-full border-2 border-white shadow-md flex items-center justify-center text-white text-xs font-bold"
+              className="size-10 rounded-full border-2 border-white shadow-md flex items-center justify-center text-white"
               style={{ backgroundColor: BRAND_COLORS[toilet.brand] }}
             >
-              🚻
+              <ToiletIcon className="size-5" />
             </div>
           </button>
         </Marker>
@@ -76,7 +77,7 @@ export function Map({ userLocation, toilets = [], onToiletSelect }: MapProps) {
           anchor="center"
         >
           <div
-            className="size-4 rounded-full bg-blue-500 border-2 border-white shadow-md"
+            className="size-10 rounded-full bg-blue-500 border-3 border-white shadow-md"
             aria-label="現在地"
           />
         </Marker>

@@ -6,6 +6,11 @@ import { useGetToilet } from "@/gen/api/toilets/toilets";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import type { ToiletBrand } from "@/gen/models/toiletBrand";
+import {
+  ToiletMaleIcon,
+  ToiletFemaleIcon,
+  ToiletIcon,
+} from "@/components/icons/toilet-icons";
 
 /** ブランド名の日本語表示 */
 const BRAND_LABEL: Record<ToiletBrand, string> = {
@@ -97,9 +102,9 @@ export default function ToiletDetailPage({
         <section className="space-y-2">
           <h2 className="font-bold">トイレ個数（合計 {totalCount}）</h2>
           <div className="grid grid-cols-3 gap-3">
-            <CountCard label="男性用" count={data.maleCount} />
-            <CountCard label="女性用" count={data.femaleCount} />
-            <CountCard label="多目的" count={data.multipurposeCount} />
+            <CountCard label="男性用" count={data.maleCount} icon={<ToiletMaleIcon className="size-5" />} />
+            <CountCard label="女性用" count={data.femaleCount} icon={<ToiletFemaleIcon className="size-5" />} />
+            <CountCard label="多目的" count={data.multipurposeCount} icon={<ToiletIcon className="size-5" />} />
           </div>
         </section>
 
@@ -123,9 +128,18 @@ export default function ToiletDetailPage({
 }
 
 /** トイレ個数のカード */
-function CountCard({ label, count }: { label: string; count: number }) {
+function CountCard({
+  label,
+  count,
+  icon,
+}: {
+  label: string;
+  count: number;
+  icon: React.ReactNode;
+}) {
   return (
-    <div className="rounded-lg border p-3 text-center">
+    <div className="rounded-lg border p-3 text-center space-y-1">
+      <div className="flex items-center justify-center text-muted-foreground">{icon}</div>
       <p className="text-2xl font-bold">{count}</p>
       <p className="text-xs text-muted-foreground">{label}</p>
     </div>

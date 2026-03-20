@@ -19,6 +19,11 @@ import { LogOut } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import type { Toilet } from "@/gen/models";
 import type { ToiletBrand } from "@/gen/models/toiletBrand";
+import {
+  ToiletMaleIcon,
+  ToiletFemaleIcon,
+  ToiletIcon,
+} from "@/components/icons/toilet-icons";
 
 /** デフォルト検索中心（東京駅） */
 const DEFAULT_CENTER = { lat: 35.6812, lng: 139.7671 };
@@ -122,9 +127,9 @@ export default function Home() {
               <div className="px-4 space-y-3">
                 {/* トイレ個数 */}
                 <div className="grid grid-cols-3 gap-2">
-                  <CountBadge label="男性用" count={selectedToilet.maleCount} />
-                  <CountBadge label="女性用" count={selectedToilet.femaleCount} />
-                  <CountBadge label="多目的" count={selectedToilet.multipurposeCount} />
+                  <CountBadge label="男性用" count={selectedToilet.maleCount} icon={<ToiletMaleIcon className="size-4" />} />
+                  <CountBadge label="女性用" count={selectedToilet.femaleCount} icon={<ToiletFemaleIcon className="size-4" />} />
+                  <CountBadge label="多目的" count={selectedToilet.multipurposeCount} icon={<ToiletIcon className="size-4" />} />
                 </div>
 
                 {/* 許可情報 */}
@@ -158,9 +163,18 @@ export default function Home() {
 }
 
 /** トイレ個数バッジ */
-function CountBadge({ label, count }: { label: string; count: number }) {
+function CountBadge({
+  label,
+  count,
+  icon,
+}: {
+  label: string;
+  count: number;
+  icon: React.ReactNode;
+}) {
   return (
-    <div className="rounded-lg border p-2 text-center">
+    <div className="rounded-lg border p-2 text-center space-y-1">
+      <div className="flex items-center justify-center text-muted-foreground">{icon}</div>
       <p className="text-lg font-bold">{count}</p>
       <p className="text-xs text-muted-foreground">{label}</p>
     </div>
