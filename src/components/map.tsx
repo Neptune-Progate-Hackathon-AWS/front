@@ -26,6 +26,8 @@ interface MapProps {
   userLocation?: { latitude: number; longitude: number } | null;
   /** 地図上に表示するトイレ一覧 */
   toilets?: Toilet[];
+  /** マーカータップ時のコールバック */
+  onToiletSelect?: (toilet: Toilet) => void;
 }
 
 /**
@@ -33,7 +35,7 @@ interface MapProps {
  * userLocation が渡された場合はそこを中心に表示し、現在地マーカーを描画する。
  * toilets が渡された場合はピンを表示する。
  */
-export function Map({ userLocation, toilets = [] }: MapProps) {
+export function Map({ userLocation, toilets = [], onToiletSelect }: MapProps) {
   const center = userLocation ?? DEFAULT_CENTER;
 
   return (
@@ -50,9 +52,11 @@ export function Map({ userLocation, toilets = [] }: MapProps) {
           longitude={toilet.lng}
           anchor="bottom"
         >
-          <div
+          <button
+            type="button"
             className="flex flex-col items-center cursor-pointer"
             title={toilet.name}
+            onClick={() => onToiletSelect?.(toilet)}
           >
             <div
               className="size-8 rounded-full border-2 border-white shadow-md flex items-center justify-center text-white text-xs font-bold"
@@ -60,7 +64,7 @@ export function Map({ userLocation, toilets = [] }: MapProps) {
             >
               🚻
             </div>
-          </div>
+          </button>
         </Marker>
       ))}
 
