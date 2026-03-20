@@ -1,11 +1,11 @@
-import { getStoredTokens } from "./auth-tokens";
+import { getStoredAuth } from "./auth-tokens";
 
 export function authFetchOptions(): RequestInit {
-  const tokens = getStoredTokens();
-  if (!tokens) return {};
+  const stored = getStoredAuth();
+  if (!stored) return {};
   return {
     headers: {
-      Authorization: `Bearer ${tokens.accessToken}`,
+      Authorization: `Bearer ${stored.tokens.accessToken}`,
     },
   };
 }
