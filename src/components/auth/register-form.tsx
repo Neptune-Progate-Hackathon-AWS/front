@@ -1,13 +1,13 @@
 /**
  * 新規登録フォーム
  *
- * Amplify Auth の signUp を呼び出してメール + パスワード + ニックネームで登録。
- * 成功時は /confirm (メール確認コード入力) にリダイレクト。
+ * RHF + Zod でフォーム管理。submit 処理は useRegisterSubmit に切り出し。
  */
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,46 +20,33 @@ import {
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import Image from "next/image";
-import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/components/ui/toast";
+import { useRegisterSubmit } from "@/hooks/useRegisterForm";
+
+const registerSchema = z.object({
+  nickname: z.string().min(1, "ニックネームを入力してください"),
+  email: z.string().email("メールアドレスの形式が正しくありません"),
+  password: z
+    .string()
+    .min(8, "パスワードは8文字以上で入力してください")
+    .regex(/[a-z]/, "小文字を含めてください")
+    .regex(/[A-Z]/, "大文字を含めてください")
+    .regex(/[0-9]/, "数字を含めてください"),
+});
 
 export function RegisterForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const router = useRouter();
-  const { register } = useAuth();
-  const { toast } = useToast();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [nickname, setNickname] = useState("");
-  const [error, setError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setIsSubmitting(true);
-
-    try {
-      await register(email, password, nickname);
-      toast({ title: "確認コードを送信しました", description: "メールを確認してください", variant: "info" });
-      router.push(`/confirm?email=${encodeURIComponent(email)}`);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("登録に失敗しました");
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
+    resolver: zodResolver(registerSchema),
+    defaultValues: { nickname: "", email: "", password: "" },
+  });
+  const { onSubmit, serverError } = useRegisterSubmit();
 
   return (
     <div className={cn("flex flex-col gap-8", className)} {...props}>
       <h1 className="text-center text-xl font-bold">新規登録</h1>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit(onSubmit)}>
         <FieldGroup className="space-y-2">
           <Field>
             <FieldLabel htmlFor="nickname">ニックネーム</FieldLabel>
@@ -68,10 +55,11 @@ export function RegisterForm({
               type="text"
               placeholder="ずんだもん"
               variant="underline"
-              required
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
+              {...register("nickname")}
             />
+            {errors.nickname && (
+              <p className="text-sm text-destructive">{errors.nickname.message}</p>
+            )}
           </Field>
           <Field>
             <FieldLabel htmlFor="email">メールアドレス</FieldLabel>
@@ -80,10 +68,11 @@ export function RegisterForm({
               type="email"
               placeholder="m@example.com"
               variant="underline"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              {...register("email")}
             />
+            {errors.email && (
+              <p className="text-sm text-destructive">{errors.email.message}</p>
+            )}
           </Field>
           <Field>
             <FieldLabel htmlFor="password">パスワード</FieldLabel>
@@ -92,13 +81,14 @@ export function RegisterForm({
               type="password"
               placeholder="••••••••"
               variant="underline"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              {...register("password")}
             />
+            {errors.password && (
+              <p className="text-sm text-destructive">{errors.password.message}</p>
+            )}
           </Field>
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
+          {serverError && (
+            <p className="text-sm text-destructive">{serverError}</p>
           )}
           <Field>
             <Button type="submit" disabled={isSubmitting}>
