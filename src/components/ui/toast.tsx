@@ -100,8 +100,7 @@ const variantClasses: Record<ToastVariant, string> = {
   default: "border-border bg-background text-foreground",
   success:
     "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900 dark:text-emerald-100",
-  info:
-    "border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-700 dark:bg-blue-900 dark:text-blue-100",
+  info: "border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-700 dark:bg-blue-900 dark:text-blue-100",
   warning:
     "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-900 dark:text-amber-100",
   error:
@@ -110,9 +109,13 @@ const variantClasses: Record<ToastVariant, string> = {
 
 const variantIcons: Record<ToastVariant, ReactNode> = {
   default: null,
-  success: <CircleCheck size={16} className="text-emerald-600 dark:text-emerald-100" />,
+  success: (
+    <CircleCheck size={16} className="text-emerald-600 dark:text-emerald-100" />
+  ),
   info: <Info size={16} className="text-blue-600 dark:text-blue-100" />,
-  warning: <TriangleAlert size={16} className="text-amber-600 dark:text-amber-100" />,
+  warning: (
+    <TriangleAlert size={16} className="text-amber-600 dark:text-amber-100" />
+  ),
   error: <OctagonAlert size={16} className="text-red-600 dark:text-red-100" />,
 };
 
@@ -129,13 +132,10 @@ export function ToastProvider({
 }) {
   const [state, dispatch] = useReducer(reducer, { toasts: [] });
 
-  const toast = useCallback(
-    (input: ToastInput) => {
-      const id = String(++idCounter);
-      dispatch({ type: "ADD", toast: { ...input, id } });
-    },
-    [],
-  );
+  const toast = useCallback((input: ToastInput) => {
+    const id = String(++idCounter);
+    dispatch({ type: "ADD", toast: { ...input, id } });
+  }, []);
 
   return (
     <ToastContext.Provider value={{ toast }}>
@@ -154,7 +154,7 @@ export function ToastProvider({
             />
           ))}
           <ToastPrimitive.Viewport
-            className={`fixed z-[100] flex flex-col gap-2 p-4 w-full max-w-sm ${viewportPositionClasses[position]}`}
+            className={`fixed z-100 flex flex-col gap-2 p-4 w-full max-w-sm ${viewportPositionClasses[position]}`}
           />
         </ToastPrimitive.Provider>
       </PositionContext.Provider>
@@ -182,9 +182,9 @@ function ToastItem({
         if (!open) setTimeout(onClose, 200);
       }}
       className={cn(
-        "rounded-xl border shadow-lg p-4 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=cancel]:translate-x-0 data-[swipe=cancel]:transition-transform data-[swipe=end]:animate-out data-[swipe=end]:fade-out-0 data-[swipe=end]:slide-out-to-right-full duration-200",
+        "rounded-xl border shadow-lg p-4 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[swipe=move]:translate-x-(--radix-toast-swipe-move-x) data-[swipe=cancel]:translate-x-0 data-[swipe=cancel]:transition-transform data-[swipe=end]:animate-out data-[swipe=end]:fade-out-0 data-[swipe=end]:slide-out-to-right-full duration-200",
         slideAnimationClasses[position],
-        variantClasses[variant]
+        variantClasses[variant],
       )}
     >
       <div className={`flex gap-3 ${icon ? "items-start" : ""}`}>
